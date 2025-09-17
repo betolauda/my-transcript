@@ -1,6 +1,6 @@
 # Audio Transcription and Text Analysis Pipeline
 
-Complete pipeline for Spanish audio transcription using OpenAI Whisper and advanced text analysis with spaCy. Features economic and Argentinian lexicon extraction plus co-occurrence network analysis.
+Complete pipeline for Spanish audio transcription using OpenAI Whisper and advanced text analysis with spaCy. Features modular economic term detection, Argentinian lexicon extraction, and co-occurrence network analysis with machine learning capabilities.
 
 ## Dependencies
 
@@ -67,9 +67,11 @@ This creates:
 - **Progress tracking** - Real-time transcription progress
 
 ### Text Analysis (episode_process.py)
-- **Economic glossary** - Extracts financial/economic terminology
+- **Modular architecture** - Configurable detectors and extractors
+- **Economic term detection** - ML-powered financial/economic terminology extraction
 - **Argentinian lexicon** - Identifies regional expressions and cultural terms
 - **Co-occurrence analysis** - Network graph of term relationships
+- **Machine learning** - Sentence transformers and FAISS for semantic similarity
 - **Multiple formats** - JSON for data, Markdown for readability
 - **Unique visualizations** - Separate graph files per analysis session
 
@@ -78,6 +80,20 @@ This creates:
 ├── transcribe.py              # Audio transcription script
 ├── episode_process.py         # Text analysis pipeline
 ├── requirements.txt           # Python dependencies
+├── config/                    # Configuration management
+│   ├── __init__.py
+│   └── config_loader.py
+├── detectors/                 # Term detection modules
+│   ├── __init__.py
+│   └── economic_detector.py
+├── extractors/                # Data extraction modules
+│   ├── __init__.py
+│   └── numeric_extractor.py
+├── models/                    # Data models and metrics
+│   ├── __init__.py
+│   ├── detected_term.py
+│   └── performance_metrics.py
+├── tests/                     # Test suite
 ├── outputs/                   # Transcription outputs
 │   ├── {filename}_{date}.txt     # Plain text transcriptions
 │   ├── {filename}_{date}.jsonl   # Segmented transcriptions
@@ -87,6 +103,19 @@ This creates:
     ├── economy_glossary.json/.md
     └── argentinian_lexicon.json/.md
 ```
+
+## Testing
+
+Run the test suite:
+```bash
+python -m pytest tests/
+```
+
+The project includes comprehensive tests for:
+- Term detection accuracy
+- Economic and cultural lexicon extraction
+- Configuration loading
+- Performance metrics validation
 
 ## Deactivate Virtual Environment
 

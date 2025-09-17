@@ -63,3 +63,8 @@ glossary/
 
 # Claude Code project file
 CLAUDE.md
+
+# Additional cleanup entries
+inputs/
+__pycache__/
+.pytest_cache/
