@@ -151,7 +151,7 @@ def create_visualization(G, economy_terms, argentinian_lexicon, base_filename):
         "top_degree_centrality": sorted(degree_centrality.items(), key=lambda x: x[1], reverse=True)[:10],
         "top_betweenness_centrality": sorted(betweenness_centrality.items(), key=lambda x: x[1], reverse=True)[:10]
     }
-    with open(f"{OUTPUT_DIRS['analysis']}/graph_metrics.json", "w", encoding="utf8") as f:
+    with open(f"{OUTPUT_DIRS['analysis']}/{base_filename}_graph_metrics.json", "w", encoding="utf8") as f:
         json.dump(graph_metrics, f, indent=2, ensure_ascii=False)
 
     # Create PyVis network
