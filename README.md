@@ -145,27 +145,27 @@ All original scripts continue to work unchanged:
 
 #### Transcription
 ```bash
-python transcribe.py <audio_file.mp3>
+python scripts/transcribe.py <audio_file.mp3>
 ```
 
 Example:
 ```bash
-python transcribe.py ./audio/S08E05.mp3
+python scripts/transcribe.py ./audio/S08E05.mp3
 ```
 
 #### Text Analysis
 ```bash
-python episode_process.py <transcription.jsonl>
+python scripts/episode_process.py <transcription.jsonl>
 ```
 
 Example:
 ```bash
-python episode_process.py ./outputs/S08E05_20250917_001758.jsonl
+python scripts/episode_process.py ./outputs/S08E05_20250917_001758.jsonl
 ```
 
 #### Economic Term Detection
 ```bash
-python detect_economic_terms_with_embeddings.py <transcription.jsonl>
+python scripts/detect_economic_terms_with_embeddings.py <transcription.jsonl>
 ```
 
 **Output Files Created:**
@@ -201,9 +201,11 @@ my-transcript/                 # Audio transcription pipeline (1.4MB total)
 ├── cli/                      # Modern CLI interface
 │   ├── __init__.py
 │   └── main.py              # Unified my-transcript command
-├── transcribe.py             # Audio transcription script (legacy)
-├── episode_process.py        # Text analysis pipeline (legacy)
-├── detect_economic_terms_with_embeddings.py  # ML detection (legacy)
+├── scripts/                  # Legacy entry point scripts
+│   ├── README.md            # Script usage documentation
+│   ├── transcribe.py        # Audio transcription (backward compatible)
+│   ├── episode_process.py   # Text analysis pipeline (backward compatible)
+│   └── detect_economic_terms_with_embeddings.py  # ML detection (backward compatible)
 ├── config/                   # Configuration management
 │   ├── __init__.py
 │   ├── config_loader.py     # Hierarchical configuration
@@ -355,9 +357,9 @@ The modern CLI provides the same functionality as legacy scripts:
 
 | Legacy Script | Modern CLI Equivalent |
 |---------------|----------------------|
-| `python transcribe.py file.mp3` | `my-transcript transcribe file.mp3` |
-| `python episode_process.py file.jsonl` | `my-transcript analyze file.jsonl` |
-| `python detect_economic_terms_with_embeddings.py file.jsonl` | `my-transcript detect file.jsonl` |
+| `python scripts/transcribe.py file.mp3` | `my-transcript transcribe file.mp3` |
+| `python scripts/episode_process.py file.jsonl` | `my-transcript analyze file.jsonl` |
+| `python scripts/detect_economic_terms_with_embeddings.py file.jsonl` | `my-transcript detect file.jsonl` |
 
 All legacy scripts continue to work unchanged for backward compatibility.
 

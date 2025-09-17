@@ -122,8 +122,8 @@ def _invoke_transcribe_script(audio_file, model, language, context):
         if str(project_root) not in sys.path:
             sys.path.insert(0, str(project_root))
 
-        # Import the original transcribe module
-        import transcribe
+        # Import the original transcribe module from scripts directory
+        import scripts.transcribe as transcribe
 
         # Temporarily modify the module constants if needed
         original_model = transcribe.WHISPER_MODEL
@@ -174,8 +174,8 @@ def _invoke_analyze_script(jsonl_file, window_size, freq_threshold, context):
         if str(project_root) not in sys.path:
             sys.path.insert(0, str(project_root))
 
-        # Import the original episode_process module
-        import episode_process
+        # Import the original episode_process module from scripts directory
+        import scripts.episode_process as episode_process
 
         # Temporarily modify the module constants
         original_window = episode_process.WINDOW_SIZE
@@ -279,8 +279,8 @@ def _invoke_detect_script(input_file, similarity_threshold, embeddings, context)
         sys.argv = ['detect_economic_terms_with_embeddings.py', input_file]
 
         try:
-            # Import and call the main function from the detection script
-            from detect_economic_terms_with_embeddings import main as detect_main
+            # Import and call the main function from the detection script in scripts directory
+            from scripts.detect_economic_terms_with_embeddings import main as detect_main
             detect_main()
 
         finally:
