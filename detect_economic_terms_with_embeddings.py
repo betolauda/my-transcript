@@ -56,8 +56,9 @@ class DetectedTerm:
     numeric_value: Optional[float]
     numeric_text: Optional[str]
     confidence: float
-    match_type: str  # 'exact', 'semantic'
+    match_type: str  # 'exact', 'semantic', 'numeric_association'
     context: str
+    group_id: str = ""  # For deduplication grouping
 
 @dataclass
 class PerformanceMetrics:
@@ -331,7 +332,11 @@ class EconomicTermDetector:
         # Count matches for this segment
         segment_exact = len(exact_matches)
         segment_semantic = len(semantic_matches)
-        segment_numeric = len([nv for nv in numeric_values if self.numeric_extractor.find_nearest_economic_term(nv['start'], [(m['start'], m['end'], m['canonical']) for m in all_matches])])
+
+        # Count numeric values that have nearby economic terms
+        term_positions = [(m['start'], m['end'], m['canonical']) for m in all_matches]
+        segment_numeric = len([nv for nv in numeric_values
+                             if self.numeric_extractor.find_nearest_economic_term(nv['start'], term_positions)])
 
         self.metrics.exact_matches += segment_exact
         self.metrics.semantic_matches += segment_semantic
@@ -394,7 +399,8 @@ class EconomicTermDetector:
                 numeric_text=None,
                 confidence=1.0,
                 match_type='exact',
-                context=context
+                context=context,
+                group_id=""  # Will be assigned during deduplication
             )
 
             self.detected_terms.append(detected_term)
@@ -479,13 +485,21 @@ class EconomicTermDetector:
             embeddings = embeddings.astype('float32')
 
             # Safe normalization on known dtype
-            import faiss
-            faiss.normalize_L2(embeddings)
+            try:
+                faiss.normalize_L2(embeddings)
+            except Exception as e:
+                logger.warning(f"FAISS normalization failed: {e}")
+                return matches
 
             # Time FAISS search
             faiss_start = time.time()
-            similarities, indices = self.faiss_index.search(embeddings, TOP_K)
-            self.metrics.faiss_search_time += time.time() - faiss_start
+            try:
+                similarities, indices = self.faiss_index.search(embeddings, TOP_K)
+            except Exception as e:
+                logger.warning(f"FAISS search failed: {e}")
+                return matches
+            finally:
+                self.metrics.faiss_search_time += time.time() - faiss_start
 
             for i, (candidate_text, start, end) in enumerate(filtered_candidates):
                 best_similarity = similarities[i][0]
@@ -506,7 +520,8 @@ class EconomicTermDetector:
                         numeric_text=None,
                         confidence=float(best_similarity),
                         match_type='semantic',
-                        context=context
+                        context=context,
+                        group_id=""  # Will be assigned during deduplication
                     )
 
                     self.detected_terms.append(detected_term)
@@ -519,7 +534,7 @@ class EconomicTermDetector:
 
         return matches
 
-    def _extract_sliding_window_ngrams(self, doc, text: str) -> List[Tuple[str, int, int]]:
+    def _extract_sliding_window_ngrams(self, doc, text: str, max_candidates: int = 200) -> List[Tuple[str, int, int]]:
         """Extract overlapping n-grams with precise character positions using sliding window."""
         candidates = []
 
@@ -532,9 +547,24 @@ class EconomicTermDetector:
                 not token.is_punct):
                 meaningful_tokens.append(token)
 
-        # Extract overlapping n-grams (1-4 tokens)
+            # Early termination for very large documents
+            if len(meaningful_tokens) > 500:
+                logger.debug("Limiting meaningful tokens to 500 for performance")
+                break
+
+        # Extract overlapping n-grams (1-4 tokens) with limits
         for window_size in range(1, 5):  # 1-gram to 4-gram
+            window_candidates = 0
             for i in range(len(meaningful_tokens) - window_size + 1):
+                # Early termination to prevent excessive candidates
+                if len(candidates) >= max_candidates:
+                    logger.debug(f"Reached max candidates ({max_candidates}) for sliding window extraction")
+                    break
+
+                # Limit candidates per window size to maintain variety
+                if window_candidates >= max_candidates // 4:
+                    break
+
                 # Get token span
                 start_token = meaningful_tokens[i]
                 end_token = meaningful_tokens[i + window_size - 1]
@@ -551,6 +581,11 @@ class EconomicTermDetector:
                     len(phrase_text.split()) <= 4 and
                     not phrase_text.isdigit()):
                     candidates.append((phrase_text, start_char, end_char))
+                    window_candidates += 1
+
+            # Early exit if we have enough candidates
+            if len(candidates) >= max_candidates:
+                break
 
         # Remove duplicates while preserving order and positions
         seen = set()
@@ -566,7 +601,6 @@ class EconomicTermDetector:
 
     def _extract_frequent_phrases(self, doc, text: str, min_frequency: int = 2) -> List[Tuple[str, int, int]]:
         """Extract frequent multi-word phrases that might indicate economic concepts."""
-        from collections import Counter
 
         phrase_counts = Counter()
         phrase_positions = {}  # Track first occurrence positions
@@ -702,7 +736,8 @@ class EconomicTermDetector:
                     numeric_text=numeric['original_text'],
                     confidence=0.8,  # Lower confidence for associated values
                     match_type='numeric_association',
-                    context=context
+                    context=context,
+                    group_id=""  # Will be assigned during deduplication
                 )
 
                 self.detected_terms.append(detected_term)
@@ -722,13 +757,47 @@ class EconomicTermDetector:
 
         return context
 
+    def _assign_group_ids(self):
+        """Assign group IDs to detected terms for deduplication."""
+        import uuid
+
+        # Sort terms by timestamp for grouping
+        sorted_terms = sorted(self.detected_terms, key=lambda x: x.timestamp)
+
+        groups = []
+        for term in sorted_terms:
+            # Find existing group within proximity threshold
+            assigned_group = None
+            for group in groups:
+                # Check if term is within character proximity of any term in the group
+                for group_term in group:
+                    if (term.canonical_term == group_term.canonical_term and
+                        abs(term.timestamp - group_term.timestamp) <= 5.0):  # 5 second window
+                        assigned_group = group
+                        break
+                if assigned_group:
+                    break
+
+            if assigned_group:
+                assigned_group.append(term)
+                term.group_id = assigned_group[0].group_id
+            else:
+                # Create new group
+                group_id = str(uuid.uuid4())[:8]  # Short UUID
+                term.group_id = group_id
+                groups.append([term])
+
     def save_results(self, base_filename: str):
         """Save detected terms in JSON and Markdown formats."""
+        # Assign group IDs for deduplication
+        self._assign_group_ids()
+
         # Prepare data for JSON export
         results_data = {
             "metadata": {
                 "total_terms": len(self.detected_terms),
                 "embedding_model": EMBEDDING_MODEL if USE_EMBEDDINGS else None,
+                "embeddings_enabled": USE_EMBEDDINGS and EMBEDDINGS_AVAILABLE and self.sentence_model is not None,
                 "similarity_threshold": SIMILARITY_THRESHOLD,
                 "exact_matches": len([t for t in self.detected_terms if t.match_type == 'exact']),
                 "semantic_matches": len([t for t in self.detected_terms if t.match_type == 'semantic']),
@@ -1171,7 +1240,6 @@ def main():
             print(f"  - Numeric associations: {numeric_count}")
 
             # Show top canonical terms
-            from collections import Counter
             canonical_counts = Counter(term.canonical_term for term in detected_terms)
             print(f"\nTop detected categories:")
             for canonical, count in canonical_counts.most_common(5):
