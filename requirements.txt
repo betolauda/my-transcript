@@ -2,6 +2,9 @@ openai-whisper
 spacy
 networkx
 pyvis
+sentence-transformers
+faiss-cpu
+regex
 
 # After installing requirements, also install the Spanish model:
 # python -m spacy download es_core_news_sm
