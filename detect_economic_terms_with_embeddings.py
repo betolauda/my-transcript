@@ -21,7 +21,6 @@ from collections import defaultdict
 
 import spacy
 from spacy.matcher import PhraseMatcher
-import numpy as np
 
 # Configuration constants
 USE_EMBEDDINGS = True
@@ -162,14 +161,18 @@ class EconomicTermDetector:
         raise RuntimeError("No Spanish spaCy model found. Please install: python -m spacy download es_core_news_sm")
 
     def _setup_phrase_matcher(self):
-        """Setup PhraseMatcher with canonical terms."""
-        patterns = []
-        for canonical_id, term_data in CANONICAL_TERMS.items():
-            for label in term_data["labels"]:
-                patterns.append(self.nlp(label.lower()))
+        """Setup PhraseMatcher with per-canonical-term patterns."""
+        total_patterns = 0
 
-        self.phrase_matcher.add("ECONOMIC_TERMS", patterns)
-        logger.info(f"PhraseMatcher initialized with {len(patterns)} patterns")
+        for canonical_id, term_data in CANONICAL_TERMS.items():
+            # Create patterns for this canonical term
+            patterns = [self.nlp(label.lower()) for label in term_data["labels"]]
+
+            # Register patterns under the canonical_id as the label
+            self.phrase_matcher.add(canonical_id, patterns)
+            total_patterns += len(patterns)
+
+        logger.info(f"PhraseMatcher initialized with {total_patterns} patterns across {len(CANONICAL_TERMS)} canonical terms")
 
     def _prepare_embeddings(self):
         """Prepare FAISS index for semantic similarity."""
@@ -253,7 +256,7 @@ class EconomicTermDetector:
         self._associate_numeric_values(numeric_values, all_matches, text, timestamp)
 
     def _find_exact_matches(self, doc, text: str, timestamp: float) -> List[Dict]:
-        """Find exact matches using PhraseMatcher."""
+        """Find exact matches using PhraseMatcher with direct canonical lookup."""
         matches = []
         phrase_matches = self.phrase_matcher(doc)
 
@@ -261,35 +264,30 @@ class EconomicTermDetector:
             span = doc[start:end]
             matched_text = span.text.lower()
 
-            # Find canonical term
-            canonical_term = None
-            for canon_id, term_data in CANONICAL_TERMS.items():
-                if matched_text in [label.lower() for label in term_data["labels"]]:
-                    canonical_term = canon_id
-                    break
+            # Direct O(1) lookup: match_id → canonical_term
+            canonical_term = self.nlp.vocab.strings[match_id]
 
-            if canonical_term:
-                context = self._extract_context(text, span.start_char, span.end_char)
+            context = self._extract_context(text, span.start_char, span.end_char)
 
-                detected_term = DetectedTerm(
-                    snippet=matched_text,
-                    timestamp=timestamp,
-                    canonical_term=canonical_term,
-                    matched_text=matched_text,
-                    numeric_value=None,
-                    numeric_text=None,
-                    confidence=1.0,
-                    match_type='exact',
-                    context=context
-                )
+            detected_term = DetectedTerm(
+                snippet=matched_text,
+                timestamp=timestamp,
+                canonical_term=canonical_term,
+                matched_text=matched_text,
+                numeric_value=None,
+                numeric_text=None,
+                confidence=1.0,
+                match_type='exact',
+                context=context
+            )
 
-                self.detected_terms.append(detected_term)
-                matches.append({
-                    'start': span.start_char,
-                    'end': span.end_char,
-                    'text': matched_text,
-                    'canonical': canonical_term
-                })
+            self.detected_terms.append(detected_term)
+            matches.append({
+                'start': span.start_char,
+                'end': span.end_char,
+                'text': matched_text,
+                'canonical': canonical_term
+            })
 
         return matches
 
