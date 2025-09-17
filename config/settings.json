@@ -1,0 +1,21 @@
+{
+  "use_embeddings": true,
+  "embedding_model": "paraphrase-multilingual-MiniLM-L12-v2",
+  "top_k": 3,
+  "similarity_threshold": 0.75,
+  "context_window": 20,
+  "distance_threshold": 10,
+  "output_dirs": {
+    "glossary": "glossary",
+    "analysis": "outputs"
+  },
+  "spacy_models": [
+    "es_core_news_trf",
+    "es_core_news_md",
+    "es_core_news_sm"
+  ],
+  "performance_tolerances": {
+    "max_degradation_percent": 5.0,
+    "memory_tolerance_mb": 50
+  }
+}
