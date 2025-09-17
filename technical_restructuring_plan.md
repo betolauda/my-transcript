@@ -1,675 +1,417 @@
-# Technical Design: Audio Transcription Project Restructuring
+# Technical Restructuring Plan: Audio Transcription Project (Post-Cleanup)
+
+**Document Version**: 2.0
+**Last Updated**: September 2025
+**Project State**: Post-Phase 1 Cleanup Complete
 
 ## EXECUTIVE SUMMARY
 
-This document outlines a comprehensive technical plan for restructuring the "my-transcript" audio transcription and text analysis project into a production-ready, installable Python package. The project has already undergone significant modular refactoring and now requires professional packaging structure, improved maintainability, and distribution capabilities.
+This document outlines the technical restructuring roadmap for the "my-transcript" audio transcription project following the successful completion of Phase 1 cleanup. The project has achieved a **99% size reduction** (111MB → 1.4MB) while preserving **100% core functionality** and establishing excellent modular architecture.
 
-**Recommended Technical Approach**: Transform the current script-based project into a professional Python package with proper CLI interfaces, configuration management, and installable distribution.
+**Current Status**: Production-ready core with clean modular structure
+**Strategic Focus**: CLI unification and developer experience optimization
+**Recommended Approach**: Lightweight enhancements preserving existing excellence
 
-**Key Architectural Decisions**:
-- Adopt src-layout package structure following PEP 517/518 standards
-- Implement proper CLI entry points with click/argparse
-- Centralize configuration management with environment variable support
-- Maintain backward compatibility during migration
+### Key Achievements (Phase 1 Complete)
+- ✅ **99MB+ bloat removed**: MP3 files, unused JS libraries, refactoring artifacts
+- ✅ **Clean modular architecture**: config/, detectors/, extractors/, models/
+- ✅ **Comprehensive test suite**: 152KB of well-organized unit/integration/e2e tests
+- ✅ **Production-ready core**: 250KB functional codebase with ML capabilities
+- ✅ **Updated documentation**: README and cleanup analysis complete
+
+### Strategic Direction
+Rather than pursuing complex src-layout migration, the optimal path forward focuses on **CLI unification** and **developer experience polish** while preserving the project's current architectural excellence.
+
+---
 
 ## CURRENT STATE ANALYSIS
 
-### Existing Architecture Assets
+### Post-Cleanup Architecture Assets
 
-**Strengths:**
-- Well-modularized codebase with clear separation of concerns
-- Comprehensive test coverage (24 Python files, organized test structure)
-- Functional modules: extractors/, detectors/, models/, config/
-- Spanish language processing pipeline with economic term detection
-- Active development with recent comprehensive refactoring (completed Phase 1 & 2 cleanup)
-
-**Current Directory Structure:**
+**Excellent Foundation:**
 ```
-my-transcript/
-├── transcribe.py                    # Main transcription CLI
-├── episode_process.py               # Text analysis CLI
-├── detect_economic_terms_with_embeddings.py  # Term detection CLI
-├── config/                          # Configuration management
-│   ├── config_loader.py
-│   └── settings.json
-├── detectors/                       # Economic term detection
-│   └── economic_detector.py
-├── extractors/                      # Data extraction utilities
-│   └── numeric_extractor.py
-├── models/                          # Data models
-│   ├── detected_term.py
-│   └── performance_metrics.py
-├── tests/                           # Test suite
-│   ├── unit/, integration/, e2e/
-│   └── fixtures/
-├── outputs/                         # Generated content
-├── glossary/                        # Domain glossaries
-└── requirements.txt                 # Dependencies
+my-transcript/ (1.4MB total - 99% size reduction achieved)
+├── transcribe.py (3KB)               # Core Whisper transcription
+├── episode_process.py (10KB)         # NLP analysis with spaCy/networkx
+├── detect_economic_terms_with_embeddings.py (4KB)  # ML term detection
+├── config/ (40KB)                    # Configuration management
+│   ├── config_loader.py              # Hierarchical config with validation
+│   └── settings.json                 # Default configurations
+├── detectors/ (92KB)                 # Economic term detection
+│   └── economic_detector.py          # SBERT + FAISS integration
+├── extractors/ (48KB)                # Data extraction utilities
+│   └── numeric_extractor.py          # Spanish numeric processing
+├── models/ (32KB)                    # Data models
+│   ├── detected_term.py              # DetectedTerm dataclass
+│   └── performance_metrics.py        # Performance tracking
+├── tests/ (152KB)                    # Comprehensive test suite
+│   ├── unit/                         # Component testing
+│   ├── integration/                  # Cross-component validation
+│   └── e2e/                          # End-to-end scenarios
+├── outputs/ (784KB)                  # Generated content (gitignored)
+├── glossary/ (20KB)                  # Sample domain glossaries
+└── requirements.txt (182B)           # Clean dependency specification
 ```
 
-### Technical Debt and Structural Issues
+**Technical Strengths:**
+- **Clean modular design** with excellent separation of concerns
+- **Robust configuration system** with validation and fallbacks
+- **ML-ready architecture** with SBERT embeddings and FAISS similarity
+- **Comprehensive testing** covering unit, integration, and e2e scenarios
+- **Spanish NLP specialization** with economic/cultural term detection
+- **Production-ready core** with proper error handling and logging
 
-**Critical Issues:**
-1. **No Package Structure**: Missing setup.py/pyproject.toml for installable distribution
-2. **CLI Inconsistency**: Three separate CLI scripts with different interfaces
-3. **Import Path Fragility**: Direct imports without proper package structure
-4. **Configuration Scatter**: Hard-coded constants mixed with JSON configuration
-5. **Missing Entry Points**: No standardized command-line interface
+### Remaining Optimization Opportunities
 
-**Maintenance Issues:**
-- Script-based execution prevents proper testing isolation
-- Hard-coded file paths limit deployment flexibility
-- No version management or dependency constraints
-- Documentation doesn't reflect modular architecture
+**Minor Cleanup Items:**
+- `tune_similarity_threshold.py` (16KB) - Diagnostic utility for ML tuning
+- `backup_system.py` (8KB) - Refactoring utility (purpose served)
+- `validate_extraction.py` (4KB) - Import validation utility
+- `technical_restructuring_plan.md` (28KB) - This document (needs updating)
 
-**Performance Considerations:**
-- Large model loading happens at script startup (inefficient)
-- No caching mechanism for embeddings/models
-- File I/O operations lack error recovery
+**Strategic Enhancements:**
+- **CLI Interface**: Three separate scripts could benefit from unified command interface
+- **Package Structure**: Optional professional packaging for distribution
+- **Developer Experience**: Tool organization and workflow optimization
 
-## TARGET ARCHITECTURE
+---
 
-### Professional Package Structure Design
+## RESTRUCTURING STRATEGY (UPDATED)
 
-**Target Layout (PEP 517/518 Compliant):**
-```
-my-transcript/
-├── src/
-│   └── my_transcript/
-│       ├── __init__.py              # Package entry point + version
-│       ├── cli/
-│       │   ├── __init__.py
-│       │   ├── main.py              # Unified CLI dispatcher
-│       │   ├── transcribe.py        # Audio transcription commands
-│       │   ├── analyze.py           # Text analysis commands
-│       │   └── detect.py            # Term detection commands
-│       ├── core/
-│       │   ├── __init__.py
-│       │   ├── transcription.py     # Core transcription logic
-│       │   ├── analysis.py          # Core analysis logic
-│       │   └── detection.py         # Core detection logic
-│       ├── config/
-│       │   ├── __init__.py
-│       │   ├── settings.py          # Settings management
-│       │   ├── defaults.py          # Default configurations
-│       │   └── validation.py        # Config validation
-│       ├── detectors/               # (existing)
-│       ├── extractors/              # (existing)
-│       ├── models/                  # (existing)
-│       ├── utils/
-│       │   ├── __init__.py
-│       │   ├── file_handlers.py     # File I/O utilities
-│       │   ├── model_cache.py       # Model caching system
-│       │   └── logging_config.py    # Logging configuration
-│       └── exceptions.py            # Custom exceptions
-├── tests/                           # (reorganized existing tests)
-│   ├── unit/
-│   ├── integration/
-│   ├── e2e/
-│   └── fixtures/
-├── docs/
-│   ├── api/
-│   ├── user_guide/
-│   └── dev_guide/
-├── examples/
-│   ├── basic_transcription.py
-│   ├── economic_analysis.py
-│   └── sample_data/
-├── pyproject.toml                   # Modern Python packaging
-├── setup.py                         # Backward compatibility
-├── README.md                        # Updated documentation
-├── CHANGELOG.md                     # Version history
-├── requirements.txt                 # Core dependencies
-├── requirements-dev.txt             # Development dependencies
-└── .env.example                     # Environment configuration template
+### Phase 2A: CLI Unification (PRIORITY: HIGH)
+**Timeline**: 1-2 days
+**Objective**: Modern unified CLI preserving all existing functionality
+**Risk**: LOW - Additive changes only
+
+**Implementation Approach:**
+```python
+# New unified entry point
+my-transcript transcribe <audio_file>
+my-transcript analyze <jsonl_file>
+my-transcript detect <text_input>
+my-transcript config --show
+
+# Backward compatibility maintained
+python transcribe.py <audio_file>  # Still works
+python episode_process.py <file>    # Still works
+python detect_economic_terms_with_embeddings.py <file>  # Still works
 ```
 
-### Component Architecture Specifications
+**Technical Design:**
+- **Click-based CLI dispatcher** with subcommand routing
+- **Preserves existing scripts** - no breaking changes
+- **Modern help system** with consistent argument parsing
+- **Global configuration** support via CLI flags
+- **Entry point installation** via pyproject.toml
 
-**1. CLI Interface Design**
-- **Unified Entry Point**: Single `my-transcript` command with subcommands
-- **Subcommand Structure**:
-  - `my-transcript transcribe <audio_file>` - Audio transcription
-  - `my-transcript analyze <jsonl_file>` - Text analysis
-  - `my-transcript detect <text_input>` - Economic term detection
-  - `my-transcript config` - Configuration management
+### Phase 2B: Development Environment Polish (PRIORITY: MEDIUM)
+**Timeline**: 1 day
+**Objective**: Clean remaining artifacts and optimize developer workflow
+**Risk**: MINIMAL - Organizational changes only
 
-**2. Configuration Management System**
-- **Hierarchical Configuration**: Environment variables > config file > defaults
-- **Configuration Sources**:
-  - Environment variables (MY_TRANSCRIPT_*)
-  - User config file (~/.my-transcript/config.json)
-  - Project config file (./my-transcript.json)
-  - Package defaults
+**Tasks:**
+1. **Tool Organization**
+   - Move `tune_similarity_threshold.py` → `tools/diagnostics/`
+   - Archive `backup_system.py` and `validate_extraction.py`
+   - Create `tools/README.md` documenting utility purposes
 
-**3. Core Service Architecture**
-- **Transcription Service**: Handles Whisper model loading and audio processing
-- **Analysis Service**: Manages spaCy models and text processing pipelines
-- **Detection Service**: Coordinates economic term detection with embeddings
-- **Configuration Service**: Centralized settings management with validation
+2. **Output Management**
+   - Update .gitignore to exclude `outputs/` generated content
+   - Keep sample glossaries for documentation
+   - Add output directory auto-creation
 
-## MIGRATION STRATEGY
+3. **Documentation Enhancement**
+   - Update README with CLI examples
+   - Create developer setup guide
+   - Add troubleshooting section
 
-### Phase 1: Package Foundation (Week 1)
-**Objective**: Create installable package structure without breaking existing functionality
+### Phase 3: Professional Packaging (PRIORITY: OPTIONAL)
+**Timeline**: 2-4 hours (if needed)
+**Objective**: PyPI-ready distribution package
+**Risk**: LOW - Well-established patterns
 
-**Implementation Tasks:**
+**Benefits Assessment:**
+- **Useful if**: Planning wide distribution or team deployment
+- **Skip if**: Current workflow meets needs (single developer/team)
+- **Defer if**: Want to validate CLI changes first
 
-1. **Package Structure Creation**
-   - Create src/my_transcript/ directory structure
-   - Generate proper __init__.py files with version information
-   - Move existing modules to appropriate package locations
-   - Scope: File organization and basic package structure
-   - Effort: 3 developer-days
-   - Dependencies: None
-   - Acceptance: Package structure created, imports work locally
+---
 
-2. **Build System Configuration**
-   - Create pyproject.toml with PEP 517/518 compliance
-   - Generate setup.py for backward compatibility
-   - Define package metadata and dependencies
-   - Scope: Build configuration and packaging metadata
-   - Effort: 2 developer-days
-   - Dependencies: Task 1
-   - Acceptance: Package installs with `pip install -e .`
+## IMPLEMENTATION ROADMAP
 
-3. **Import Path Migration**
-   - Update all import statements to use package paths
-   - Modify existing modules to use relative imports
-   - Update test imports for new package structure
-   - Scope: Import statement updates across codebase
-   - Effort: 2 developer-days
-   - Dependencies: Task 1, 2
-   - Acceptance: All tests pass with new import structure
+### Phase 2A: CLI Unification (Week 1)
 
-### Phase 2: CLI Standardization (Week 2)
-**Objective**: Create unified command-line interface with proper entry points
+#### Day 1: CLI Framework Setup
+**Morning (2-3 hours):**
+```bash
+# Create CLI structure
+mkdir -p cli/
+touch cli/__init__.py
+touch cli/main.py
+```
 
-**Implementation Tasks:**
+**CLI Dispatcher Implementation:**
+```python
+# cli/main.py
+import click
+from pathlib import Path
 
-4. **CLI Framework Implementation**
-   - Design unified CLI dispatcher with click framework
-   - Create subcommand structure for transcribe/analyze/detect
-   - Implement consistent argument parsing and validation
-   - Scope: CLI framework and command routing
-   - Effort: 4 developer-days
-   - Dependencies: Task 3
-   - Acceptance: Unified CLI commands work equivalently to original scripts
+@click.group()
+@click.option('--config', help='Configuration file path')
+@click.option('--verbose', '-v', is_flag=True, help='Verbose output')
+@click.pass_context
+def main(ctx, config, verbose):
+    """Audio transcription and economic term detection pipeline."""
+    ctx.ensure_object(dict)
+    ctx.obj['config'] = config
+    ctx.obj['verbose'] = verbose
 
-5. **Entry Points Configuration**
-   - Configure console_scripts entry points in setup.py
-   - Create shell-accessible commands (my-transcript, transcribe, analyze)
-   - Implement command aliasing for backward compatibility
-   - Scope: Package entry points and command installation
-   - Effort: 2 developer-days
-   - Dependencies: Task 4
-   - Acceptance: Commands available system-wide after package installation
+@main.command()
+@click.argument('audio_file', type=click.Path(exists=True))
+@click.option('--output-dir', default='outputs', help='Output directory')
+def transcribe(audio_file, output_dir):
+    """Transcribe audio file using Whisper."""
+    # Import and call existing transcribe.py functionality
+    from transcribe import main as transcribe_main
+    import sys
+    sys.argv = ['transcribe.py', audio_file]
+    transcribe_main()
 
-6. **Configuration System Integration**
-   - Implement hierarchical configuration management
-   - Add environment variable support for all settings
-   - Create configuration validation and error handling
-   - Scope: Configuration management system
-   - Effort: 3 developer-days
-   - Dependencies: Task 4
-   - Acceptance: CLI respects config hierarchy, environment variables work
+@main.command()
+@click.argument('jsonl_file', type=click.Path(exists=True))
+def analyze(jsonl_file):
+    """Analyze transcription with NLP pipeline."""
+    # Import and call existing episode_process.py functionality
+    from episode_process import main as analyze_main
+    import sys
+    sys.argv = ['episode_process.py', jsonl_file]
+    analyze_main()
 
-### Phase 3: Production Enhancements (Week 3)
-**Objective**: Add production-ready features and optimizations
+@main.command()
+@click.argument('input_file', type=click.Path(exists=True))
+def detect(input_file):
+    """Detect economic terms using ML."""
+    # Import and call existing detect_economic_terms_with_embeddings.py
+    from detect_economic_terms_with_embeddings import main as detect_main
+    import sys
+    sys.argv = ['detect_economic_terms_with_embeddings.py', input_file]
+    detect_main()
 
-**Implementation Tasks:**
+if __name__ == '__main__':
+    main()
+```
 
-7. **Logging and Error Handling**
-   - Implement structured logging with configurable levels
-   - Add comprehensive error handling with user-friendly messages
-   - Create debug mode with detailed diagnostics
-   - Scope: Logging infrastructure and error management
-   - Effort: 3 developer-days
-   - Dependencies: Task 5
-   - Acceptance: Proper logging output, graceful error handling
+**Afternoon (1-2 hours):**
+- Test CLI commands for equivalence
+- Add basic error handling and help text
+- Validate backward compatibility
 
-8. **Performance Optimizations**
-   - Implement model caching system to avoid repeated loading
-   - Add lazy loading for heavy dependencies (sentence-transformers)
-   - Optimize file I/O operations with streaming and validation
-   - Scope: Performance improvements and resource management
-   - Effort: 4 developer-days
-   - Dependencies: Task 6
-   - Acceptance: 50%+ reduction in startup time, efficient memory usage
-
-9. **Documentation and Examples**
-   - Create comprehensive API documentation
-   - Write user guide with examples and tutorials
-   - Generate developer documentation for contributors
-   - Scope: Documentation creation and example development
-   - Effort: 3 developer-days
-   - Dependencies: Task 7
-   - Acceptance: Complete documentation, working examples
-
-### Phase 4: Distribution Preparation (Week 4)
-**Objective**: Prepare package for distribution and deployment
-
-**Implementation Tasks:**
-
-10. **Distribution Configuration**
-    - Configure automated testing with tox/pytest
-    - Set up pre-commit hooks for code quality
-    - Create GitHub Actions workflows for CI/CD
-    - Scope: Automation and quality assurance setup
-    - Effort: 3 developer-days
-    - Dependencies: Task 8
-    - Acceptance: Automated testing passes, CI/CD functional
-
-11. **Release Preparation**
-    - Version management with semantic versioning
-    - CHANGELOG.md creation with migration notes
-    - PyPI package preparation and metadata validation
-    - Scope: Release engineering and package distribution
-    - Effort: 2 developer-days
-    - Dependencies: Task 9, 10
-    - Acceptance: Package ready for PyPI release
-
-## TECHNICAL SPECIFICATIONS
-
-### Package Configuration (pyproject.toml)
-
+#### Day 2: Package Configuration
+**Morning (2 hours):**
 ```toml
+# pyproject.toml
 [build-system]
-requires = ["setuptools>=64", "setuptools-scm>=8", "wheel"]
+requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "my-transcript"
-description = "Audio transcription and economic term detection pipeline for Spanish content"
-authors = [{name = "Project Team", email = "team@example.com"}]
-license = {text = "MIT"}
+version = "1.0.0"
+description = "Spanish audio transcription with economic term detection"
+authors = [{name = "Project Team"}]
 readme = "README.md"
 requires-python = ">=3.8"
-keywords = ["transcription", "nlp", "spanish", "economic-analysis", "whisper", "spacy"]
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Multimedia :: Sound/Audio :: Speech",
-]
 dependencies = [
-    "openai-whisper>=20231117",
-    "spacy>=3.4.0",
-    "networkx>=2.8",
-    "pyvis>=0.3.0",
-    "sentence-transformers>=2.0.0",
-    "faiss-cpu>=1.7.0",
-    "regex>=2022.0.0",
+    "openai-whisper",
+    "spacy",
+    "networkx",
+    "pyvis",
+    "sentence-transformers",
+    "faiss-cpu",
+    "regex",
     "click>=8.0.0",
-    "pydantic>=1.10.0",
-    "rich>=12.0.0",
-    "typer>=0.7.0",
 ]
-dynamic = ["version"]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "black>=22.0.0",
-    "flake8>=5.0.0",
-    "mypy>=0.991",
-    "pre-commit>=2.20.0",
-    "tox>=4.0.0",
-]
-docs = [
-    "sphinx>=5.0.0",
-    "sphinx-rtd-theme>=1.0.0",
-    "myst-parser>=0.18.0",
-]
-
-[project.urls]
-Homepage = "https://github.com/username/my-transcript"
-Documentation = "https://my-transcript.readthedocs.io"
-Repository = "https://github.com/username/my-transcript.git"
-"Bug Tracker" = "https://github.com/username/my-transcript/issues"
 
 [project.scripts]
-my-transcript = "my_transcript.cli.main:main"
-transcribe = "my_transcript.cli.transcribe:main"
-analyze-transcript = "my_transcript.cli.analyze:main"
-detect-terms = "my_transcript.cli.detect:main"
+my-transcript = "cli.main:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-my_transcript = ["config/*.json", "data/*.json"]
-
-[tool.setuptools_scm]
-write_to = "src/my_transcript/_version.py"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-addopts = "-v --cov=my_transcript --cov-report=html --cov-report=term"
-
-[tool.black]
-line-length = 88
-target-version = ['py38']
-include = '\.pyi?$'
-
-[tool.mypy]
-python_version = "3.8"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
+where = ["."]
+include = ["cli*", "config*", "detectors*", "extractors*", "models*"]
 ```
 
-### Entry Points and CLI Interface
+**Afternoon (1 hour):**
+- Test package installation: `pip install -e .`
+- Verify global command: `my-transcript --help`
+- Validate all subcommands work correctly
 
-**Main CLI Dispatcher (src/my_transcript/cli/main.py):**
-```python
-#!/usr/bin/env python3
-"""Main CLI dispatcher for my-transcript package."""
+### Phase 2B: Development Polish (Week 1)
 
-import typer
-from typing import Optional
-from my_transcript.cli import transcribe, analyze, detect
-from my_transcript.config import get_version
+#### Day 3: Tool Organization (2 hours)
+```bash
+# Create tools structure
+mkdir -p tools/diagnostics/
+mkdir -p tools/validation/
 
-app = typer.Typer(
-    name="my-transcript",
-    help="Audio transcription and economic term detection pipeline",
-    add_completion=False,
-)
+# Move utilities
+mv tune_similarity_threshold.py tools/diagnostics/
+mv validate_extraction.py tools/validation/
 
-app.add_typer(transcribe.app, name="transcribe", help="Audio transcription commands")
-app.add_typer(analyze.app, name="analyze", help="Text analysis commands")
-app.add_typer(detect.app, name="detect", help="Economic term detection commands")
+# Archive completed utilities
+mkdir -p archive/
+mv backup_system.py archive/
 
-@app.callback()
-def main(
-    version: Optional[bool] = typer.Option(None, "--version", help="Show version and exit"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
-    config_file: Optional[str] = typer.Option(None, "--config", help="Configuration file path"),
-):
-    """Audio transcription and economic term detection pipeline."""
-    if version:
-        typer.echo(f"my-transcript {get_version()}")
-        raise typer.Exit()
+# Create documentation
+cat > tools/README.md << 'EOF'
+# Development Tools
 
-    # Configure global settings
-    if verbose:
-        import logging
-        logging.getLogger().setLevel(logging.DEBUG)
+## Diagnostics (`tools/diagnostics/`)
+- `tune_similarity_threshold.py` - ML similarity threshold optimization
+  Usage: `python tools/diagnostics/tune_similarity_threshold.py`
 
-    if config_file:
-        from my_transcript.config import load_config
-        load_config(config_file)
+## Validation (`tools/validation/`)
+- `validate_extraction.py` - Import validation utility
+  Usage: `python tools/validation/validate_extraction.py`
 
-if __name__ == "__main__":
-    app()
+## Archive (`archive/`)
+- Historical utilities no longer needed for current development
+EOF
 ```
 
-### Configuration Management System
+#### Day 4: Output Management & Documentation (2 hours)
+```bash
+# Update .gitignore
+echo "outputs/*.txt" >> .gitignore
+echo "outputs/*.jsonl" >> .gitignore
+echo "outputs/*.html" >> .gitignore
+echo "outputs/*.json" >> .gitignore
 
-**Configuration Schema (src/my_transcript/config/settings.py):**
-```python
-"""Configuration management with Pydantic validation."""
-
-from pydantic import BaseSettings, Field
-from typing import List, Optional
-import os
-
-class TranscriptionSettings(BaseSettings):
-    """Whisper transcription configuration."""
-    model: str = Field(default="base", description="Whisper model size")
-    language: str = Field(default="Spanish", description="Audio language")
-    output_dir: str = Field(default="outputs", description="Output directory")
-
-    class Config:
-        env_prefix = "MY_TRANSCRIPT_TRANSCRIPTION_"
-
-class AnalysisSettings(BaseSettings):
-    """Text analysis configuration."""
-    spacy_models: List[str] = Field(
-        default=["es_core_news_trf", "es_core_news_md", "es_core_news_sm"],
-        description="spaCy model preference order"
-    )
-    window_size: int = Field(default=5, description="Co-occurrence window size")
-    frequency_threshold: int = Field(default=3, description="Minimum term frequency")
-
-    class Config:
-        env_prefix = "MY_TRANSCRIPT_ANALYSIS_"
-
-class DetectionSettings(BaseSettings):
-    """Economic term detection configuration."""
-    similarity_threshold: float = Field(default=0.75, description="Similarity threshold")
-    embedding_model: str = Field(
-        default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        description="Sentence transformer model"
-    )
-    cache_embeddings: bool = Field(default=True, description="Cache embeddings")
-
-    class Config:
-        env_prefix = "MY_TRANSCRIPT_DETECTION_"
-
-class AppSettings(BaseSettings):
-    """Main application settings."""
-    transcription: TranscriptionSettings = TranscriptionSettings()
-    analysis: AnalysisSettings = AnalysisSettings()
-    detection: DetectionSettings = DetectionSettings()
-
-    log_level: str = Field(default="INFO", description="Logging level")
-    debug: bool = Field(default=False, description="Debug mode")
-
-    class Config:
-        env_prefix = "MY_TRANSCRIPT_"
-        env_file = ".env"
+# Keep sample outputs for documentation
+mkdir -p examples/sample_outputs/
+cp glossary/economy_glossary.md examples/sample_outputs/
+cp glossary/argentinian_lexicon.md examples/sample_outputs/
 ```
+
+**Update README.md:**
+```markdown
+# Usage
+
+## Modern CLI (Recommended)
+```bash
+# Install package
+pip install -e .
+
+# Unified commands
+my-transcript transcribe audio_file.mp3
+my-transcript analyze transcription.jsonl
+my-transcript detect transcription.jsonl
+```
+
+## Legacy Scripts (Still Supported)
+```bash
+python transcribe.py audio_file.mp3
+python episode_process.py transcription.jsonl
+python detect_economic_terms_with_embeddings.py transcription.jsonl
+```
+```
+
+### Phase 3: Optional Professional Packaging
+
+**Only implement if needed for distribution:**
+- Automated testing with GitHub Actions
+- PyPI publication configuration
+- Comprehensive documentation with Sphinx
+- Version management with semantic versioning
+
+---
+
+## TECHNICAL SPECIFICATIONS
+
+### CLI Framework Choice: Click
+**Rationale:**
+- **Lightweight** - Minimal overhead for existing functionality
+- **Mature** - Well-established with excellent documentation
+- **Compatible** - Easy integration with existing argument parsing
+- **Flexible** - Supports both simple and complex CLI patterns
+
+### Package Structure Choice: Flat Layout
+**Rationale:**
+- **Preserves current architecture** - No import path changes required
+- **Minimizes risk** - Avoids complex src-layout migration
+- **Maintains simplicity** - Easy to understand and maintain
+- **Enables future migration** - Can upgrade to src-layout later if needed
+
+### Configuration Integration
+**Current config system preserved:**
+- Existing `config/config_loader.py` continues to work
+- CLI adds `--config` flag for file specification
+- Environment variables supported via existing system
+- No breaking changes to configuration workflow
+
+---
 
 ## RISK ASSESSMENT
 
-### Technical Risks and Mitigation Strategies
+### Phase 2A Risks (CLI Unification)
+**LOW RISK - Additive changes only**
 
-**High Risk: Import Path Breakage**
-- **Impact**: High - Could break existing scripts and imports
-- **Probability**: Medium - Complex refactoring with many files
-- **Mitigation Strategy**:
-  - Implement comprehensive test suite validation after each migration step
-  - Create import compatibility layer during transition period
-  - Use automated import path transformation tools
-- **Monitoring**: Run full test suite after each import path change
-- **Rollback Plan**: Git-based rollback with import path restoration scripts
+**Potential Issue**: CLI argument parsing differences
+- **Mitigation**: Wrapper approach preserves original argument handling
+- **Detection**: Automated testing comparing CLI vs script outputs
+- **Rollback**: Remove CLI entry points, continue using scripts
 
-**High Risk: CLI Interface Changes**
-- **Impact**: High - Users currently rely on existing script interfaces
-- **Probability**: Low - Well-planned CLI migration
-- **Mitigation Strategy**:
-  - Maintain backward compatibility with shell script wrappers
-  - Implement gradual migration with deprecation warnings
-  - Provide clear migration documentation and examples
-- **Monitoring**: User feedback collection and usage analytics
-- **Rollback Plan**: Restore original scripts as primary interface
+**Potential Issue**: Import path complications
+- **Mitigation**: Minimal import changes, existing modules preserved
+- **Detection**: Import testing in CI environment
+- **Rollback**: Remove pyproject.toml, revert to script-only usage
 
-**Medium Risk: Dependency Conflicts**
-- **Impact**: Medium - Could cause installation or runtime issues
-- **Probability**: Medium - Complex ML dependencies with version constraints
-- **Mitigation Strategy**:
-  - Pin dependency versions with tested combinations
-  - Implement comprehensive CI testing across Python versions
-  - Use virtual environment isolation for development
-- **Monitoring**: Automated dependency vulnerability scanning
-- **Rollback Plan**: Revert to requirements.txt with known working versions
+### Phase 2B Risks (Development Polish)
+**MINIMAL RISK - Organizational changes only**
 
-**Medium Risk: Performance Regression**
-- **Impact**: Medium - Could slow down processing pipelines
-- **Probability**: Low - Mostly structural changes
-- **Mitigation Strategy**:
-  - Establish performance benchmarks before migration
-  - Implement model caching to improve startup times
-  - Profile critical paths during development
-- **Monitoring**: Automated performance testing in CI pipeline
-- **Rollback Plan**: Performance-based rollback triggers with specific thresholds
+**Potential Issue**: Tool accessibility after moving
+- **Mitigation**: Clear documentation of new locations
+- **Detection**: Manual verification of tool functionality
+- **Rollback**: Move tools back to root directory
 
-**Low Risk: Configuration Migration**
-- **Impact**: Low - Primarily affects advanced users
-- **Probability**: Low - Backward compatible configuration design
-- **Mitigation Strategy**:
-  - Implement automatic configuration migration
-  - Provide configuration validation with helpful error messages
-  - Maintain support for legacy configuration format
-- **Monitoring**: Configuration validation error tracking
-- **Rollback Plan**: Legacy configuration format support
+### Overall Risk Profile
+- **Breaking Changes**: NONE - All existing workflows preserved
+- **Functionality Loss**: NONE - Core capabilities unchanged
+- **Performance Impact**: MINIMAL - CLI adds negligible overhead
+- **Learning Curve**: LOW - Optional CLI, scripts still work
 
-### Security Considerations
-
-**Model Loading Security**
-- Validate model file integrity before loading
-- Implement secure model caching with checksums
-- Use trusted model sources and version pinning
-
-**File Input Validation**
-- Validate audio file formats and sizes before processing
-- Implement secure temporary file handling
-- Add input sanitization for text processing
-
-**Configuration Security**
-- Validate configuration file permissions
-- Implement secure environment variable handling
-- Add configuration schema validation
+---
 
 ## SUCCESS CRITERIA
 
-### Functional Requirements
+### Phase 2A Success Metrics
+- ✅ **CLI equivalence**: All commands produce identical outputs to scripts
+- ✅ **Package installation**: `pip install -e .` works successfully
+- ✅ **Global access**: `my-transcript` command available system-wide
+- ✅ **Backward compatibility**: All existing scripts continue to function
+- ✅ **Help documentation**: Comprehensive help for all commands
 
-**Package Installation and Distribution**
-- Package installs successfully via `pip install my-transcript`
-- All CLI commands accessible system-wide after installation
-- Package uninstalls cleanly without leaving artifacts
-- Successfully published to PyPI with proper metadata
-
-**CLI Interface Equivalence**
-- All existing script functionality available through unified CLI
-- Backward compatibility maintained for existing users
-- Command help and documentation comprehensive and accurate
-- Error messages informative and actionable
-
-**Configuration Management**
-- Hierarchical configuration works correctly (env vars > config > defaults)
-- Configuration validation prevents invalid settings
-- Environment variable support for all configurable options
-- Migration path from existing hardcoded settings
-
-### Performance Benchmarks
-
-**Startup Performance**
-- CLI startup time < 2 seconds (50% improvement from current)
-- Model loading time reduced through caching (avoid repeated loads)
-- Memory usage optimized with lazy loading of heavy dependencies
-
-**Processing Performance**
-- Transcription speed equivalent to current implementation
-- Analysis processing time within 10% of current performance
-- Detection accuracy maintained at current levels
-
-**Resource Efficiency**
-- Memory usage reduced by 25% through optimized model management
-- Disk usage reduced through efficient caching strategies
-- CPU utilization optimized for multi-core processing
+### Phase 2B Success Metrics
+- ✅ **Clean organization**: Development tools properly categorized
+- ✅ **Updated documentation**: README reflects current structure
+- ✅ **Output management**: Generated files properly gitignored
+- ✅ **Developer workflow**: Clear setup and usage instructions
 
 ### Quality Gates
+- **Functionality**: 100% preservation of existing capabilities
+- **Performance**: No measurable regression in processing speed
+- **Usability**: CLI interface intuitive and well-documented
+- **Maintainability**: Code organization improved, not complicated
 
-**Code Quality Standards**
-- 100% test coverage for new CLI interface code
-- All existing tests pass without modification
-- Type hints added to all public APIs
-- Documentation coverage > 90% for public functions
+---
 
-**Distribution Quality**
-- Package metadata complete and accurate
-- Dependencies properly specified with version constraints
-- Installation tested across Python 3.8-3.11
-- Cross-platform compatibility (Linux, macOS, Windows)
+## RECOMMENDATION SUMMARY
 
-**User Experience Quality**
-- Migration documentation clear and comprehensive
-- Example code and tutorials functional
-- Error messages user-friendly and actionable
-- Configuration options well-documented
+**Immediate Action (Phase 2A):** Implement CLI unification for modern user experience while preserving all existing functionality. This provides immediate value with minimal risk.
 
-### Monitoring and Alerting Requirements
+**Follow-up Action (Phase 2B):** Polish development environment for improved maintainability and documentation.
 
-**Installation Monitoring**
-- Track successful installations via PyPI download statistics
-- Monitor installation failure rates and error patterns
-- Alert on dependency conflict reports
+**Optional Future (Phase 3):** Consider professional packaging only if distribution requirements emerge.
 
-**Performance Monitoring**
-- Benchmark performance regression alerts (>15% slowdown)
-- Memory usage trend monitoring
-- Model loading time tracking
+**Key Principle:** Preserve the excellent architecture achieved in Phase 1 while adding modern CLI convenience. Avoid complex restructuring that could jeopardize the project's current clean and functional state.
 
-**User Adoption Monitoring**
-- CLI command usage analytics (anonymized)
-- Configuration option adoption rates
-- User feedback and issue tracking
-
-## IMPLEMENTATION TIMELINE
-
-### Week 1: Foundation (Package Structure)
-- **Days 1-2**: Package structure creation and basic setup.py/pyproject.toml
-- **Days 3-4**: Import path migration and module organization
-- **Day 5**: Testing and validation of package structure
-
-### Week 2: CLI Interface (User Experience)
-- **Days 1-2**: CLI framework implementation with typer/click
-- **Days 3-4**: Entry points configuration and command testing
-- **Day 5**: Configuration system integration and validation
-
-### Week 3: Production Features (Optimization)
-- **Days 1-2**: Logging and error handling implementation
-- **Days 3-4**: Performance optimizations and caching
-- **Day 5**: Documentation and examples creation
-
-### Week 4: Distribution (Release Preparation)
-- **Days 1-2**: Automated testing and CI/CD setup
-- **Days 3-4**: Release preparation and PyPI configuration
-- **Day 5**: Final validation and documentation review
-
-### Critical Path Items
-1. **Package Structure Creation** (Week 1) - Blocks all subsequent work
-2. **Import Path Migration** (Week 1) - Required for CLI implementation
-3. **CLI Framework Implementation** (Week 2) - Core user interface
-4. **Entry Points Configuration** (Week 2) - Required for distribution
-
-### Risk Buffer
-- Additional 2-3 days allocated for unexpected import issues
-- Performance optimization may require additional iteration
-- Documentation may need extra review cycle
-
-## DEVELOPMENT RESOURCE REQUIREMENTS
-
-### Primary Developer Skills Required
-- **Python Packaging Expert** (40 hours) - Package structure, build system, PyPI
-- **CLI Framework Developer** (30 hours) - typer/click, command-line interfaces
-- **Configuration Systems Developer** (20 hours) - Pydantic, environment variables
-- **Performance Engineer** (15 hours) - Profiling, optimization, caching
-
-### Total Effort Estimate: 105 developer-hours (2.5-3 weeks for single developer)
-
-### Testing and Validation Resources
-- **QA Testing** (20 hours) - Cross-platform testing, installation validation
-- **Documentation Review** (10 hours) - Technical writing, user guide validation
-- **Performance Validation** (5 hours) - Benchmark comparison, profiling
-
-### Infrastructure Requirements
-- **CI/CD Pipeline Setup** - GitHub Actions, automated testing
-- **Package Distribution** - PyPI account, release automation
-- **Documentation Hosting** - ReadTheDocs or equivalent
-- **Performance Monitoring** - Benchmarking infrastructure
-
-This comprehensive technical plan provides a structured approach to transforming the current audio transcription project into a professional, distributable Python package while maintaining full functionality and improving maintainability.
+The project is already in excellent condition. These enhancements will make it even better without risking the substantial progress already achieved.
