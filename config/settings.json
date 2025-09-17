@@ -1,21 +1,75 @@
 {
-  "use_embeddings": true,
-  "embedding_model": "paraphrase-multilingual-MiniLM-L12-v2",
-  "top_k": 3,
-  "similarity_threshold": 0.75,
-  "context_window": 20,
-  "distance_threshold": 10,
+  "models": {
+    "embedding_model": "paraphrase-multilingual-MiniLM-L12-v2",
+    "spacy_models": [
+      "es_core_news_trf",
+      "es_core_news_md",
+      "es_core_news_sm"
+    ]
+  },
+  "detection": {
+    "use_embeddings": true,
+    "similarity_threshold": 0.75,
+    "distance_threshold": 10,
+    "top_k": 3,
+    "context_window": 20
+  },
   "output_dirs": {
     "glossary": "glossary",
     "analysis": "outputs"
   },
-  "spacy_models": [
-    "es_core_news_trf",
-    "es_core_news_md",
-    "es_core_news_sm"
-  ],
   "performance_tolerances": {
     "max_degradation_percent": 5.0,
     "memory_tolerance_mb": 50
+  },
+  "canonical_terms": {
+    "inflacion": {
+      "labels": ["inflación", "inflacion", "IPC", "índice de precios", "suba de precios", "suba de los precios", "inflation", "price index", "consumer price index"],
+      "description": "Inflation – general rise of prices, often measured by IPC."
+    },
+    "pbi": {
+      "labels": ["PIB", "pbi", "producto bruto interno", "producto bruto", "producto interno bruto", "GDP", "gross domestic product"],
+      "description": "Gross Domestic Product."
+    },
+    "reservas": {
+      "labels": ["reservas", "reservas internacionales", "reservas del banco central", "reserves", "international reserves", "central bank reserves"],
+      "description": "International reserves held by central bank."
+    },
+    "desempleo": {
+      "labels": ["desempleo", "tasa de desempleo", "paro", "unemployment", "unemployment rate"],
+      "description": "Unemployment rate."
+    },
+    "dolar": {
+      "labels": ["dólar", "dolar", "u$s", "usd", "dolares", "dólares", "tipo de cambio", "dollar", "exchange rate", "USD"],
+      "description": "US Dollar / exchange rate references."
+    },
+    "peso": {
+      "labels": ["peso", "pesos", "$", "ARS", "peso argentino"],
+      "description": "Argentine peso references."
+    },
+    "deficit": {
+      "labels": ["déficit", "deficit", "déficit fiscal", "deficit fiscal", "fiscal deficit"],
+      "description": "Fiscal deficit."
+    },
+    "superavit": {
+      "labels": ["superávit", "superavit", "superávit fiscal", "fiscal surplus"],
+      "description": "Fiscal surplus."
+    },
+    "tasa_interes": {
+      "labels": ["tasa de interés", "tasa de interes", "tasa", "tasa activa", "tasa pasiva", "tasa de política monetaria", "interest rate", "policy rate", "benchmark rate"],
+      "description": "Interest rate."
+    },
+    "m2": {
+      "labels": ["M2", "m2", "m1", "M1", "oferta monetaria", "monetary supply", "money supply"],
+      "description": "Monetary aggregates."
+    },
+    "importaciones": {
+      "labels": ["importaciones", "volumen de importaciones", "importe de importaciones", "imports", "import volume"],
+      "description": "Imports volume."
+    },
+    "subsidios": {
+      "labels": ["subsidios", "subsidio", "subsidies", "subsidy"],
+      "description": "Subsidies."
+    }
   }
 }
