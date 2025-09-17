@@ -149,7 +149,7 @@ class EconomicTermDetector:
         self.numeric_extractor = NumericExtractor()
 
     def _load_spacy_model(self) -> spacy.Language:
-        """Load Spanish spaCy model with fallback options."""
+        """Load Spanish spaCy model with robust fallback."""
         for model_name in SPACY_MODELS:
             try:
                 nlp = spacy.load(model_name)
@@ -158,24 +158,41 @@ class EconomicTermDetector:
             except OSError:
                 continue
 
-        raise RuntimeError("No Spanish spaCy model found. Please install: python -m spacy download es_core_news_sm")
+        # Fallback to blank model with warning
+        logger.warning("No trained spaCy models found. Falling back to blank Spanish model.")
+        logger.warning("For better accuracy, install: python -m spacy download es_core_news_sm")
+
+        nlp = spacy.blank("es")
+
+        # Add minimal pipeline components for basic functionality
+        if "sentencizer" not in nlp.pipe_names:
+            nlp.add_pipe("sentencizer")
+
+        logger.info("Initialized blank Spanish model with sentencizer")
+        return nlp
 
     def _setup_phrase_matcher(self):
-        """Setup PhraseMatcher with per-canonical-term patterns."""
+        """Setup PhraseMatcher with per-canonical-term patterns and lookup mapping."""
         total_patterns = 0
+        self.label_to_canonical = {}  # Direct lookup mapping for exact matches
 
         for canonical_id, term_data in CANONICAL_TERMS.items():
             # Create patterns for this canonical term
             patterns = [self.nlp(label.lower()) for label in term_data["labels"]]
+
+            # Build direct lookup mapping for O(1) label validation
+            for label in term_data["labels"]:
+                self.label_to_canonical[label.lower()] = canonical_id
 
             # Register patterns under the canonical_id as the label
             self.phrase_matcher.add(canonical_id, patterns)
             total_patterns += len(patterns)
 
         logger.info(f"PhraseMatcher initialized with {total_patterns} patterns across {len(CANONICAL_TERMS)} canonical terms")
+        logger.info(f"Label lookup mapping created with {len(self.label_to_canonical)} entries")
 
     def _prepare_embeddings(self):
-        """Prepare FAISS index for semantic similarity."""
+        """Prepare FAISS index with safe dtype handling."""
         if not self.sentence_model:
             return
 
@@ -191,13 +208,16 @@ class EconomicTermDetector:
         # Generate embeddings
         embeddings = self.sentence_model.encode(all_terms)
 
+        # Ensure float32 dtype BEFORE normalization
+        embeddings = embeddings.astype('float32')
+
         # Create FAISS index
         dimension = embeddings.shape[1]
         self.faiss_index = faiss.IndexFlatIP(dimension)  # Inner product for cosine similarity
 
-        # Normalize embeddings for cosine similarity
+        # Safe normalization on known dtype
         faiss.normalize_L2(embeddings)
-        self.faiss_index.add(embeddings.astype('float32'))
+        self.faiss_index.add(embeddings)  # Already float32
 
         self.canonical_term_list = all_terms
         self.term_to_canonical = term_to_canonical
@@ -298,15 +318,38 @@ class EconomicTermDetector:
         # Extract candidate phrases (noun chunks, entities)
         candidates = []
 
-        # Add noun chunks
-        for chunk in doc.noun_chunks:
-            if len(chunk.text.split()) <= 4:  # Limit phrase length
-                candidates.append((chunk.text.lower(), chunk.start_char, chunk.end_char))
+        # Add noun chunks (requires dependency parsing)
+        try:
+            for chunk in doc.noun_chunks:
+                if len(chunk.text.split()) <= 4:  # Limit phrase length
+                    candidates.append((chunk.text.lower(), chunk.start_char, chunk.end_char))
+        except Exception as e:
+            # noun_chunks requires dependency parsing - skip for blank models
+            if "noun_chunks requires the dependency parse" in str(e) or "[E029]" in str(e):
+                logger.debug("Skipping noun_chunks extraction: dependency parsing not available")
+            else:
+                raise
 
-        # Add named entities
-        for ent in doc.ents:
-            if len(ent.text.split()) <= 4:
-                candidates.append((ent.text.lower(), ent.start_char, ent.end_char))
+        # Add named entities (blank models may have limited NER)
+        try:
+            for ent in doc.ents:
+                if len(ent.text.split()) <= 4:
+                    candidates.append((ent.text.lower(), ent.start_char, ent.end_char))
+        except Exception as e:
+            logger.debug(f"Named entity extraction failed: {e}")
+
+        # If no candidates found (e.g., blank model), extract simple token n-grams as fallback
+        if not candidates:
+            logger.debug("No noun chunks or entities found, using token-based fallback")
+            tokens = [token.text.lower() for token in doc if token.is_alpha and len(token.text) > 2]
+            for i in range(len(tokens) - 1):
+                for n in range(1, min(4, len(tokens) - i + 1)):  # 1-3 gram
+                    if i + n <= len(tokens):
+                        phrase = " ".join(tokens[i:i+n])
+                        # Approximate character positions (best effort)
+                        start_char = i * 6  # rough estimate
+                        end_char = start_char + len(phrase)
+                        candidates.append((phrase, start_char, end_char))
 
         # Remove candidates that overlap with exact matches
         filtered_candidates = []
@@ -323,12 +366,15 @@ class EconomicTermDetector:
             candidate_texts = [cand[0] for cand in filtered_candidates]
             embeddings = self.sentence_model.encode(candidate_texts)
 
-            # Normalize for cosine similarity
+            # Ensure float32 dtype BEFORE normalization
+            embeddings = embeddings.astype('float32')
+
+            # Safe normalization on known dtype
             import faiss
             faiss.normalize_L2(embeddings)
 
             # Search for similar terms
-            similarities, indices = self.faiss_index.search(embeddings.astype('float32'), TOP_K)
+            similarities, indices = self.faiss_index.search(embeddings, TOP_K)
 
             for i, (candidate_text, start, end) in enumerate(filtered_candidates):
                 best_similarity = similarities[i][0]
