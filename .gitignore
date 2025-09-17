@@ -45,6 +45,7 @@ Thumbs.db
 
 # Project specific - Input/Output directories
 audio/
+inputs/
 outputs/
 glossary/
 
