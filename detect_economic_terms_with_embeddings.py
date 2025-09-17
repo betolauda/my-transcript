@@ -14,10 +14,11 @@ import sys
 import os
 import re
 import logging
+import time
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, asdict
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 import spacy
 from spacy.matcher import PhraseMatcher
@@ -26,7 +27,7 @@ from spacy.matcher import PhraseMatcher
 USE_EMBEDDINGS = True
 EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 TOP_K = 3
-SIMILARITY_THRESHOLD = 0.60
+SIMILARITY_THRESHOLD = 0.75
 CONTEXT_WINDOW = 20
 DISTANCE_THRESHOLD = 10
 OUTPUT_DIRS = {"glossary": "glossary", "analysis": "outputs"}
@@ -57,6 +58,33 @@ class DetectedTerm:
     confidence: float
     match_type: str  # 'exact', 'semantic'
     context: str
+
+@dataclass
+class PerformanceMetrics:
+    """Performance and timing metrics for the detection process."""
+    total_processing_time: float = 0.0
+    spacy_processing_time: float = 0.0
+    exact_matching_time: float = 0.0
+    semantic_matching_time: float = 0.0
+    embedding_generation_time: float = 0.0
+    faiss_search_time: float = 0.0
+    numeric_extraction_time: float = 0.0
+    association_time: float = 0.0
+    candidate_extraction_time: float = 0.0
+
+    total_segments: int = 0
+    total_terms_detected: int = 0
+    exact_matches: int = 0
+    semantic_matches: int = 0
+    numeric_associations: int = 0
+
+    def segments_per_second(self) -> float:
+        """Calculate processing throughput in segments per second."""
+        return self.total_segments / self.total_processing_time if self.total_processing_time > 0 else 0
+
+    def terms_per_second(self) -> float:
+        """Calculate detection throughput in terms per second."""
+        return self.total_terms_detected / self.total_processing_time if self.total_processing_time > 0 else 0
 
 # ---------- Canonical seed dictionary ----------
 CANONICAL_TERMS = {
@@ -147,6 +175,7 @@ class EconomicTermDetector:
 
         self._setup_phrase_matcher()
         self.numeric_extractor = NumericExtractor()
+        self.metrics = PerformanceMetrics()
 
     def _load_spacy_model(self) -> spacy.Language:
         """Load Spanish spaCy model with robust fallback."""
@@ -225,8 +254,11 @@ class EconomicTermDetector:
         logger.info(f"FAISS index initialized with {len(all_terms)} canonical terms")
 
     def process_jsonl_file(self, file_path: str) -> List[DetectedTerm]:
-        """Process JSONL file and detect economic terms."""
+        """Process JSONL file and detect economic terms with performance tracking."""
         self.detected_terms = []
+        self.metrics = PerformanceMetrics()  # Reset metrics for new file
+
+        processing_start_time = time.time()
 
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -250,30 +282,94 @@ class EconomicTermDetector:
             logger.error(f"Error processing file {file_path}: {e}")
             raise
 
+        # Finalize metrics
+        self.metrics.total_processing_time = time.time() - processing_start_time
+        self.metrics.total_terms_detected = len(self.detected_terms)
+
         logger.info(f"Processed file: {len(self.detected_terms)} terms detected")
+        self._log_performance_summary()
         return self.detected_terms
 
     def _process_text_segment(self, text: str, timestamp: float):
-        """Process a single text segment for economic terms."""
-        # Process with spaCy
+        """Process a single text segment for economic terms with performance tracking."""
+        segment_start_time = time.time()
+
+        # Process with spaCy (timed)
+        spacy_start = time.time()
         doc = self.nlp(text)
+        self.metrics.spacy_processing_time += time.time() - spacy_start
 
-        # Extract numeric values first
+        # Extract numeric values first (timed)
+        numeric_start = time.time()
         numeric_values = self.numeric_extractor.extract_numeric_values(text)
+        self.metrics.numeric_extraction_time += time.time() - numeric_start
 
-        # Phase 1: Exact matching with PhraseMatcher
+        # Phase 1: Exact matching with PhraseMatcher (timed)
+        exact_start = time.time()
         exact_matches = self._find_exact_matches(doc, text, timestamp)
+        self.metrics.exact_matching_time += time.time() - exact_start
 
-        # Phase 2: Semantic matching (if enabled)
+        # Phase 2: Semantic matching (if enabled) (timed)
         semantic_matches = []
         if self.sentence_model and self.faiss_index:
+            semantic_start = time.time()
             semantic_matches = self._find_semantic_matches(doc, text, timestamp, exact_matches)
+            self.metrics.semantic_matching_time += time.time() - semantic_start
 
         # Combine all matches
         all_matches = exact_matches + semantic_matches
 
-        # Phase 3: Associate numeric values with nearby terms
+        # Phase 3: Associate numeric values with nearby terms (timed)
+        association_start = time.time()
         self._associate_numeric_values(numeric_values, all_matches, text, timestamp)
+        self.metrics.association_time += time.time() - association_start
+
+        # Update segment metrics
+        self.metrics.total_segments += 1
+        segment_time = time.time() - segment_start_time
+
+        # Count matches for this segment
+        segment_exact = len(exact_matches)
+        segment_semantic = len(semantic_matches)
+        segment_numeric = len([nv for nv in numeric_values if self.numeric_extractor.find_nearest_economic_term(nv['start'], [(m['start'], m['end'], m['canonical']) for m in all_matches])])
+
+        self.metrics.exact_matches += segment_exact
+        self.metrics.semantic_matches += segment_semantic
+        self.metrics.numeric_associations += segment_numeric
+
+        logger.debug(f"Segment processed in {segment_time:.3f}s: {segment_exact} exact, {segment_semantic} semantic, {segment_numeric} numeric")
+
+    def _log_performance_summary(self):
+        """Log comprehensive performance summary and diagnostics."""
+        m = self.metrics
+
+        logger.info("=== PERFORMANCE SUMMARY ===")
+        logger.info(f"Total processing time: {m.total_processing_time:.3f}s")
+        logger.info(f"Segments processed: {m.total_segments}")
+        logger.info(f"Terms detected: {m.total_terms_detected}")
+        logger.info(f"Throughput: {m.segments_per_second():.2f} segments/sec, {m.terms_per_second():.2f} terms/sec")
+
+        logger.info("=== TIMING BREAKDOWN ===")
+        if m.total_processing_time > 0:
+            logger.info(f"spaCy processing: {m.spacy_processing_time:.3f}s ({100*m.spacy_processing_time/m.total_processing_time:.1f}%)")
+            logger.info(f"Exact matching: {m.exact_matching_time:.3f}s ({100*m.exact_matching_time/m.total_processing_time:.1f}%)")
+            logger.info(f"Semantic matching: {m.semantic_matching_time:.3f}s ({100*m.semantic_matching_time/m.total_processing_time:.1f}%)")
+            logger.info(f"  - Candidate extraction: {m.candidate_extraction_time:.3f}s ({100*m.candidate_extraction_time/m.total_processing_time:.1f}%)")
+            logger.info(f"  - Embedding generation: {m.embedding_generation_time:.3f}s ({100*m.embedding_generation_time/m.total_processing_time:.1f}%)")
+            logger.info(f"  - FAISS search: {m.faiss_search_time:.3f}s ({100*m.faiss_search_time/m.total_processing_time:.1f}%)")
+            logger.info(f"Numeric extraction: {m.numeric_extraction_time:.3f}s ({100*m.numeric_extraction_time/m.total_processing_time:.1f}%)")
+            logger.info(f"Association: {m.association_time:.3f}s ({100*m.association_time/m.total_processing_time:.1f}%)")
+
+        logger.info("=== DETECTION BREAKDOWN ===")
+        logger.info(f"Exact matches: {m.exact_matches}")
+        logger.info(f"Semantic matches: {m.semantic_matches}")
+        logger.info(f"Numeric associations: {m.numeric_associations}")
+
+        # Performance warnings
+        if m.segments_per_second() < 1.0:
+            logger.warning("Low throughput detected (<1 segment/sec). Consider optimization.")
+        if m.semantic_matching_time > 0.5 * m.total_processing_time:
+            logger.warning("Semantic matching is >50% of processing time. Consider reducing candidates.")
 
     def _find_exact_matches(self, doc, text: str, timestamp: float) -> List[Dict]:
         """Find exact matches using PhraseMatcher with direct canonical lookup."""
@@ -315,6 +411,9 @@ class EconomicTermDetector:
         """Find semantic matches using SBERT + FAISS."""
         matches = []
 
+        # Time candidate extraction
+        candidate_start = time.time()
+
         # Extract candidate phrases (noun chunks, entities)
         candidates = []
 
@@ -338,18 +437,22 @@ class EconomicTermDetector:
         except Exception as e:
             logger.debug(f"Named entity extraction failed: {e}")
 
-        # If no candidates found (e.g., blank model), extract simple token n-grams as fallback
+        # If no candidates found (e.g., blank model), extract precise sliding window n-grams
         if not candidates:
-            logger.debug("No noun chunks or entities found, using token-based fallback")
-            tokens = [token.text.lower() for token in doc if token.is_alpha and len(token.text) > 2]
-            for i in range(len(tokens) - 1):
-                for n in range(1, min(4, len(tokens) - i + 1)):  # 1-3 gram
-                    if i + n <= len(tokens):
-                        phrase = " ".join(tokens[i:i+n])
-                        # Approximate character positions (best effort)
-                        start_char = i * 6  # rough estimate
-                        end_char = start_char + len(phrase)
-                        candidates.append((phrase, start_char, end_char))
+            logger.debug("No noun chunks or entities found, using precise sliding window extraction")
+            candidates.extend(self._extract_sliding_window_ngrams(doc, text))
+
+        # Always add frequent phrases for better coverage
+        frequent_phrases = self._extract_frequent_phrases(doc, text)
+        if frequent_phrases:
+            logger.debug(f"Adding {len(frequent_phrases)} frequent phrase candidates")
+            candidates.extend(frequent_phrases)
+
+        # Add pattern-based economic phrases
+        pattern_phrases = self._extract_economic_patterns(text)
+        if pattern_phrases:
+            logger.debug(f"Adding {len(pattern_phrases)} pattern-based economic phrases")
+            candidates.extend(pattern_phrases)
 
         # Remove candidates that overlap with exact matches
         filtered_candidates = []
@@ -361,10 +464,16 @@ class EconomicTermDetector:
             if not overlap:
                 filtered_candidates.append((candidate_text, start, end))
 
+        self.metrics.candidate_extraction_time += time.time() - candidate_start
+
         # Process candidates with semantic similarity
         if filtered_candidates:
             candidate_texts = [cand[0] for cand in filtered_candidates]
+
+            # Time embedding generation
+            embedding_start = time.time()
             embeddings = self.sentence_model.encode(candidate_texts)
+            self.metrics.embedding_generation_time += time.time() - embedding_start
 
             # Ensure float32 dtype BEFORE normalization
             embeddings = embeddings.astype('float32')
@@ -373,8 +482,10 @@ class EconomicTermDetector:
             import faiss
             faiss.normalize_L2(embeddings)
 
-            # Search for similar terms
+            # Time FAISS search
+            faiss_start = time.time()
             similarities, indices = self.faiss_index.search(embeddings, TOP_K)
+            self.metrics.faiss_search_time += time.time() - faiss_start
 
             for i, (candidate_text, start, end) in enumerate(filtered_candidates):
                 best_similarity = similarities[i][0]
@@ -408,6 +519,165 @@ class EconomicTermDetector:
 
         return matches
 
+    def _extract_sliding_window_ngrams(self, doc, text: str) -> List[Tuple[str, int, int]]:
+        """Extract overlapping n-grams with precise character positions using sliding window."""
+        candidates = []
+
+        # Filter meaningful tokens (alphabetic, not too short, not stopwords)
+        meaningful_tokens = []
+        for token in doc:
+            if (token.is_alpha and
+                len(token.text) > 2 and
+                not token.is_stop and
+                not token.is_punct):
+                meaningful_tokens.append(token)
+
+        # Extract overlapping n-grams (1-4 tokens)
+        for window_size in range(1, 5):  # 1-gram to 4-gram
+            for i in range(len(meaningful_tokens) - window_size + 1):
+                # Get token span
+                start_token = meaningful_tokens[i]
+                end_token = meaningful_tokens[i + window_size - 1]
+
+                # Calculate precise character positions
+                start_char = start_token.idx
+                end_char = end_token.idx + len(end_token.text)
+
+                # Extract phrase text from original text using positions
+                phrase_text = text[start_char:end_char].lower().strip()
+
+                # Validate phrase quality
+                if (len(phrase_text) > 2 and
+                    len(phrase_text.split()) <= 4 and
+                    not phrase_text.isdigit()):
+                    candidates.append((phrase_text, start_char, end_char))
+
+        # Remove duplicates while preserving order and positions
+        seen = set()
+        unique_candidates = []
+        for phrase, start, end in candidates:
+            key = (phrase, start, end)
+            if key not in seen:
+                seen.add(key)
+                unique_candidates.append((phrase, start, end))
+
+        logger.debug(f"Extracted {len(unique_candidates)} sliding window n-gram candidates")
+        return unique_candidates
+
+    def _extract_frequent_phrases(self, doc, text: str, min_frequency: int = 2) -> List[Tuple[str, int, int]]:
+        """Extract frequent multi-word phrases that might indicate economic concepts."""
+        from collections import Counter
+
+        phrase_counts = Counter()
+        phrase_positions = {}  # Track first occurrence positions
+
+        # Extract meaningful token sequences
+        meaningful_tokens = [token for token in doc if
+                           token.is_alpha and len(token.text) > 2 and not token.is_stop]
+
+        # Count bi-grams and tri-grams
+        for window_size in [2, 3]:
+            for i in range(len(meaningful_tokens) - window_size + 1):
+                tokens_in_window = meaningful_tokens[i:i + window_size]
+                phrase = " ".join(token.text.lower() for token in tokens_in_window)
+
+                # Skip if contains numbers or is too short
+                if any(char.isdigit() for char in phrase) or len(phrase) < 5:
+                    continue
+
+                phrase_counts[phrase] += 1
+
+                # Store position of first occurrence
+                if phrase not in phrase_positions:
+                    start_char = tokens_in_window[0].idx
+                    end_char = tokens_in_window[-1].idx + len(tokens_in_window[-1].text)
+                    phrase_positions[phrase] = (start_char, end_char)
+
+        # Filter frequent phrases
+        frequent_candidates = []
+        for phrase, count in phrase_counts.items():
+            if count >= min_frequency:
+                start_char, end_char = phrase_positions[phrase]
+                frequent_candidates.append((phrase, start_char, end_char))
+
+        # Sort by frequency (most frequent first)
+        frequent_candidates.sort(key=lambda x: phrase_counts[x[0]], reverse=True)
+
+        # Limit to top 20 to avoid noise
+        return frequent_candidates[:20]
+
+    def _extract_economic_patterns(self, text: str) -> List[Tuple[str, int, int]]:
+        """Extract economic phrases using pattern matching for Spanish economic terminology."""
+        patterns = [
+            # Rate/percentage patterns
+            r'\btasa\s+de\s+\w+(?:\s+\w+)*\b',
+            r'\bíndice\s+de\s+\w+(?:\s+\w+)*\b',
+            r'\btipo\s+de\s+cambio\b',
+            r'\btasa\s+de\s+interés\b',
+            r'\btasa\s+de\s+inflación\b',
+
+            # Economic indicators
+            r'\bproducto\s+bruto\s+interno\b',
+            r'\bproducto\s+interno\s+bruto\b',
+            r'\bbalanza\s+comercial\b',
+            r'\bbalanza\s+de\s+pagos\b',
+            r'\bdeuda\s+externa\b',
+            r'\bdeuda\s+pública\b',
+
+            # Central bank and monetary policy
+            r'\bbanco\s+central\b',
+            r'\bpolítica\s+monetaria\b',
+            r'\bpolítica\s+fiscal\b',
+            r'\breservas\s+internacionales\b',
+            r'\bbase\s+monetaria\b',
+
+            # Market terminology
+            r'\bmercado\s+de\s+capitales\b',
+            r'\bmercado\s+cambiario\b',
+            r'\bmercado\s+financiero\b',
+            r'\bbolsa\s+de\s+valores\b',
+            r'\briesgo\s+país\b',
+
+            # Crisis and economic conditions
+            r'\bcrisis\s+económica\b',
+            r'\bcrisis\s+financiera\b',
+            r'\brecesión\s+económica\b',
+            r'\bcrecimiento\s+económico\b',
+
+            # Specific economic measures
+            r'\bcepo\s+cambiario\b',
+            r'\bbrecha\s+cambiaria\b',
+            r'\bdólar\s+blue\b',
+            r'\bdólar\s+oficial\b',
+            r'\bfondo\s+monetario\s+internacional\b',
+        ]
+
+        economic_candidates = []
+        text_lower = text.lower()
+
+        for pattern in patterns:
+            for match in re.finditer(pattern, text_lower, re.IGNORECASE):
+                phrase = match.group(0).strip()
+                start_pos = match.start()
+                end_pos = match.end()
+
+                # Validate phrase quality
+                if (len(phrase) > 3 and
+                    len(phrase.split()) >= 2 and  # At least two words
+                    not phrase.isdigit()):
+                    economic_candidates.append((phrase, start_pos, end_pos))
+
+        # Remove duplicates
+        seen = set()
+        unique_patterns = []
+        for phrase, start, end in economic_candidates:
+            key = phrase.lower()
+            if key not in seen:
+                seen.add(key)
+                unique_patterns.append((phrase, start, end))
+
+        return unique_patterns
+
     def _associate_numeric_values(self, numeric_values: List[Dict], term_matches: List[Dict],
                                   text: str, timestamp: float):
         """Associate numeric values with nearby economic terms."""
@@ -415,10 +685,7 @@ class EconomicTermDetector:
         term_positions = [(match['start'], match['end'], match['canonical']) for match in term_matches]
 
         for numeric in numeric_values:
-            if numeric['start'] < 0:  # Skip text numbers without positions
-                continue
-
-            # Find nearest economic term
+            # Find nearest economic term (now handles position validation internally)
             nearest_term = self.numeric_extractor.find_nearest_economic_term(
                 numeric['start'], term_positions
             )
@@ -466,6 +733,22 @@ class EconomicTermDetector:
                 "exact_matches": len([t for t in self.detected_terms if t.match_type == 'exact']),
                 "semantic_matches": len([t for t in self.detected_terms if t.match_type == 'semantic']),
                 "numeric_associations": len([t for t in self.detected_terms if t.match_type == 'numeric_association'])
+            },
+            "performance_metrics": {
+                "total_processing_time": self.metrics.total_processing_time,
+                "total_segments": self.metrics.total_segments,
+                "segments_per_second": self.metrics.segments_per_second(),
+                "terms_per_second": self.metrics.terms_per_second(),
+                "timing_breakdown": {
+                    "spacy_processing_time": self.metrics.spacy_processing_time,
+                    "exact_matching_time": self.metrics.exact_matching_time,
+                    "semantic_matching_time": self.metrics.semantic_matching_time,
+                    "candidate_extraction_time": self.metrics.candidate_extraction_time,
+                    "embedding_generation_time": self.metrics.embedding_generation_time,
+                    "faiss_search_time": self.metrics.faiss_search_time,
+                    "numeric_extraction_time": self.metrics.numeric_extraction_time,
+                    "association_time": self.metrics.association_time
+                }
             },
             "detected_terms": [asdict(term) for term in self.detected_terms]
         }
@@ -637,16 +920,63 @@ class NumericExtractor:
         return sorted(results, key=lambda x: x['start'])
 
     def _normalize_number(self, text: str) -> Optional[float]:
-        """Convert string number to float, handling Spanish formats."""
+        """Convert string number to float with context-aware separator detection."""
         try:
-            # Replace comma decimal separator with dot
-            normalized = text.replace(',', '.')
+            # Clean input
+            text = text.strip()
+            if not text:
+                return None
+
+            # Handle simple cases first
+            if ',' not in text and '.' not in text:
+                return float(text)
+
+            # Context-aware separator detection
+            if ',' in text and '.' in text:
+                # Both separators present - determine which is decimal
+                comma_pos = text.rfind(',')
+                dot_pos = text.rfind('.')
+
+                if dot_pos > comma_pos:
+                    # Format: 1.234,56 or 1,234.56 - dot comes after comma
+                    if dot_pos - comma_pos <= 3:
+                        # Likely European format: 1.234,56 (dot=thousands, comma=decimal)
+                        normalized = text.replace('.', '').replace(',', '.')
+                    else:
+                        # Likely US format with error or unusual spacing
+                        normalized = text.replace(',', '')
+                else:
+                    # Format: 1,234.56 (comma=thousands, dot=decimal)
+                    normalized = text.replace(',', '')
+            elif ',' in text:
+                # Only comma present
+                comma_count = text.count(',')
+                comma_pos = text.rfind(',')
+
+                if comma_count == 1:
+                    # Check if it's decimal separator (Spanish style) or thousands
+                    digits_after_comma = len(text) - comma_pos - 1
+                    if digits_after_comma <= 3 and comma_pos > 0:
+                        # Likely decimal separator: 12,34
+                        normalized = text.replace(',', '.')
+                    else:
+                        # Likely thousands separator: 1,234
+                        normalized = text.replace(',', '')
+                else:
+                    # Multiple commas - thousands separators: 1,234,567
+                    normalized = text.replace(',', '')
+            else:
+                # Only dot present - assume it's decimal separator
+                normalized = text
+
             return float(normalized)
-        except ValueError:
+
+        except (ValueError, AttributeError):
+            logger.debug(f"Failed to normalize number: {text}")
             return None
 
     def _extract_text_numbers(self, text: str) -> List[Dict[str, Any]]:
-        """Extract numbers written as text (e.g., 'tres punto dos por ciento')."""
+        """Extract numbers written as text with precise character position recovery."""
         results = []
         words = re.findall(r'\b\w+\b', text.lower())
 
@@ -682,40 +1012,101 @@ class NumericExtractor:
                         value_type = 'percentage'
                         i += 1
 
-                # Reconstruct original text
-                original_text = ' '.join(words[original_start:i])
+                # Reconstruct original text phrase
+                phrase = ' '.join(words[original_start:i])
+
+                # Find character positions in original text
+                start_pos, end_pos = self._find_phrase_positions(text, phrase)
 
                 results.append({
                     'value': current_value,
                     'type': value_type,
-                    'original_text': original_text,
-                    'start': -1,  # Text position would need more complex tracking
-                    'end': -1
+                    'original_text': phrase,
+                    'start': start_pos,
+                    'end': end_pos
                 })
             else:
                 i += 1
 
         return results
 
+    def _find_phrase_positions(self, text: str, phrase: str) -> Tuple[int, int]:
+        """Find character positions of phrase in original text with fuzzy matching."""
+        # Try exact match first (case-insensitive)
+        text_lower = text.lower()
+        phrase_lower = phrase.lower()
+
+        pos = text_lower.find(phrase_lower)
+        if pos != -1:
+            return pos, pos + len(phrase)
+
+        # If exact match fails, try word-boundary matching
+        # Split phrase into words and find approximate positions
+        phrase_words = phrase_lower.split()
+        if not phrase_words:
+            return -1, -1
+
+        # Find first word position
+        first_word = phrase_words[0]
+        pattern = r'\b' + re.escape(first_word) + r'\b'
+        match = re.search(pattern, text_lower)
+
+        if match:
+            start_pos = match.start()
+
+            # Try to find end position by looking for last word
+            if len(phrase_words) > 1:
+                last_word = phrase_words[-1]
+                # Search for last word after first word position
+                last_pattern = r'\b' + re.escape(last_word) + r'\b'
+                last_match = re.search(last_pattern, text_lower[start_pos:])
+
+                if last_match:
+                    end_pos = start_pos + last_match.end()
+                    return start_pos, end_pos
+
+            # Fallback: estimate end position
+            estimated_length = len(phrase) + 10  # Add buffer for spacing differences
+            end_pos = min(start_pos + estimated_length, len(text))
+            return start_pos, end_pos
+
+        # Ultimate fallback - return -1 for impossible cases
+        logger.debug(f"Could not find position for text number phrase: '{phrase}'")
+        return -1, -1
+
     def find_nearest_economic_term(self, numeric_position: int, economic_terms: List[Tuple[int, int, str]],
                                    max_distance: int = DISTANCE_THRESHOLD) -> Optional[str]:
-        """Find the nearest economic term to a numeric value."""
-        if numeric_position < 0:  # Skip text numbers without positions
+        """Find the nearest economic term to a numeric value with improved distance calculation."""
+        # Skip if position is invalid
+        if numeric_position < 0:
+            logger.debug(f"Skipping numeric association: invalid position {numeric_position}")
             return None
 
         closest_term = None
         min_distance = float('inf')
 
         for start, end, term in economic_terms:
-            # Calculate distance (consider both directions)
-            distance = min(
-                abs(numeric_position - end),    # Distance from end of term
-                abs(start - numeric_position)   # Distance from start of term
-            )
+            # Skip terms with invalid positions
+            if start < 0 or end < 0:
+                continue
+
+            # Calculate distance considering overlap and proximity
+            if numeric_position >= start and numeric_position <= end:
+                # Numeric value is inside the term span - very close
+                distance = 0
+            elif numeric_position < start:
+                # Numeric value is before the term
+                distance = start - numeric_position
+            else:
+                # Numeric value is after the term
+                distance = numeric_position - end
 
             if distance < min_distance and distance <= max_distance:
                 min_distance = distance
                 closest_term = term
+
+        if closest_term:
+            logger.debug(f"Associated numeric at position {numeric_position} with term '{closest_term}' (distance: {min_distance})")
 
         return closest_term
 
