@@ -49,6 +49,14 @@ inputs/
 outputs/
 glossary/
 
+# Documentation (keep in git but ignore some generated docs)
+# docs/ - keeping docs in git for project documentation
+
+# Package build artifacts
+*.egg-info/
+build/
+dist/
+
 # Temporary files
 *.tmp
 *.temp

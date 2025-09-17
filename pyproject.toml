@@ -1,0 +1,99 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-transcript"
+version = "1.0.0"
+description = "Spanish audio transcription with economic term detection pipeline"
+authors = [{name = "Audio Analysis Team"}]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+keywords = ["transcription", "nlp", "spanish", "whisper", "spacy", "economic-analysis"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+dependencies = [
+    "openai-whisper",
+    "spacy>=3.4.0",
+    "networkx",
+    "pyvis",
+    "sentence-transformers",
+    "faiss-cpu",
+    "regex",
+    "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "black",
+    "isort",
+    "flake8",
+]
+
+[project.urls]
+Homepage = "https://github.com/betolauda/my-transcript"
+Documentation = "https://github.com/betolauda/my-transcript/blob/main/README.md"
+Repository = "https://github.com/betolauda/my-transcript.git"
+Issues = "https://github.com/betolauda/my-transcript/issues"
+
+[project.scripts]
+my-transcript = "cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli*", "config*", "detectors*", "extractors*", "models*"]
+exclude = ["tests*", "tools*", "archive*", "docs*", "outputs*", "glossary*", "venv*", ".git*"]
+
+[tool.setuptools.package-data]
+config = ["*.json"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["cli", "config", "detectors", "extractors", "models"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --strict-markers --cov=cli --cov=config --cov=detectors --cov=extractors --cov=models"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

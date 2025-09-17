@@ -154,8 +154,8 @@ def create_visualization(G, economy_terms, argentinian_lexicon, base_filename):
     with open(f"{OUTPUT_DIRS['analysis']}/{base_filename}_graph_metrics.json", "w", encoding="utf8") as f:
         json.dump(graph_metrics, f, indent=2, ensure_ascii=False)
 
-    # Create PyVis network
-    net = Network(height="750px", width="100%", bgcolor="#ffffff", font_color="black")
+    # Create PyVis network with CDN resources to avoid local lib/ dependency
+    net = Network(height="750px", width="100%", bgcolor="#ffffff", font_color="black", cdn_resources='remote')
     net.set_options("""
     var options = {
       "physics": {
