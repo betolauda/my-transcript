@@ -189,11 +189,14 @@ def create_visualization(G, economy_terms, argentinian_lexicon, base_filename):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python episode_process.py <input.jsonl>")
-        sys.exit(1)
+    import argparse
 
-    input_file = sys.argv[1]
+    parser = argparse.ArgumentParser(description="Process transcription and extract economic/argentinian terms")
+    parser.add_argument("input_file", help="Input JSONL file containing transcription")
+    parser.add_argument("--visualize", action="store_true", help="Generate interactive HTML visualization (starts local server)")
+
+    args = parser.parse_args()
+    input_file = args.input_file
 
     # Load the Spanish language model with fallback options
     nlp = None
@@ -245,9 +248,26 @@ if __name__ == "__main__":
     if argentinian_lexicon:
         save_glossary(argentinian_lexicon, "argentinian_lexicon", "Argentinian Lexicon")
 
-    # Create visualization and save metrics
+    # Calculate and save graph metrics (always)
     if G.number_of_nodes() > 0:
-        graph_metrics = create_visualization(G, economy_terms, argentinian_lexicon, base_filename)
+        degree_centrality = nx.degree_centrality(G)
+        betweenness_centrality = nx.betweenness_centrality(G)
+
+        graph_metrics = {
+            "total_nodes": G.number_of_nodes(),
+            "total_edges": G.number_of_edges(),
+            "top_degree_centrality": sorted(degree_centrality.items(), key=lambda x: x[1], reverse=True)[:10],
+            "top_betweenness_centrality": sorted(betweenness_centrality.items(), key=lambda x: x[1], reverse=True)[:10]
+        }
+        with open(f"{OUTPUT_DIRS['analysis']}/{base_filename}_graph_metrics.json", "w", encoding="utf8") as f:
+            json.dump(graph_metrics, f, indent=2, ensure_ascii=False)
+
+        # Create visualization only if requested
+        if args.visualize:
+            print("Creating interactive visualization...")
+            create_visualization(G, economy_terms, argentinian_lexicon, base_filename)
+        else:
+            print("Skipping visualization (use --visualize to create interactive graph)")
     else:
         print("Warning: No graph nodes found. Skipping visualization.")
         graph_metrics = {"total_nodes": 0, "total_edges": 0}

@@ -56,8 +56,9 @@ def transcribe(ctx, audio_file, model, language):
 @click.argument('jsonl_file', type=click.Path(exists=True))
 @click.option('--window-size', default=5, help='Co-occurrence window size for graph analysis')
 @click.option('--freq-threshold', default=3, help='Minimum frequency threshold for term inclusion')
+@click.option('--visualize', is_flag=True, help='Generate interactive HTML visualization (starts local server)')
 @click.pass_context
-def analyze(ctx, jsonl_file, window_size, freq_threshold):
+def analyze(ctx, jsonl_file, window_size, freq_threshold, visualize):
     """Analyze transcription with spaCy NLP pipeline.
 
     JSONL_FILE: Path to the JSONL transcription file from transcribe command
@@ -67,8 +68,9 @@ def analyze(ctx, jsonl_file, window_size, freq_threshold):
     Example:
         my-transcript analyze outputs/interview_20241201.jsonl
         my-transcript analyze --window-size 7 --freq-threshold 2 transcription.jsonl
+        my-transcript analyze --visualize transcription.jsonl
     """
-    _invoke_analyze_script(jsonl_file, window_size, freq_threshold, ctx.obj)
+    _invoke_analyze_script(jsonl_file, window_size, freq_threshold, ctx.obj, visualize)
 
 
 @main.command()
@@ -164,7 +166,7 @@ def _invoke_transcribe_script(audio_file, model, language, context):
         sys.exit(1)
 
 
-def _invoke_analyze_script(jsonl_file, window_size, freq_threshold, context):
+def _invoke_analyze_script(jsonl_file, window_size, freq_threshold, context, visualize=False):
     """Wrapper to invoke episode_process.py with preserved functionality."""
     try:
         # Add project root to path for importing scripts
@@ -238,9 +240,28 @@ def _invoke_analyze_script(jsonl_file, window_size, freq_threshold, context):
             if argentinian_lexicon:
                 episode_process.save_glossary(argentinian_lexicon, "argentinian_lexicon", "Argentinian Lexicon")
 
-            # Create visualization
+            # Calculate and save graph metrics (always)
             if G.number_of_nodes() > 0:
-                graph_metrics = episode_process.create_visualization(G, economy_terms, argentinian_lexicon, base_filename)
+                import networkx as nx
+                degree_centrality = nx.degree_centrality(G)
+                betweenness_centrality = nx.betweenness_centrality(G)
+
+                graph_metrics = {
+                    "total_nodes": G.number_of_nodes(),
+                    "total_edges": G.number_of_edges(),
+                    "top_degree_centrality": sorted(degree_centrality.items(), key=lambda x: x[1], reverse=True)[:10],
+                    "top_betweenness_centrality": sorted(betweenness_centrality.items(), key=lambda x: x[1], reverse=True)[:10]
+                }
+                import json
+                with open(f"{episode_process.OUTPUT_DIRS['analysis']}/{base_filename}_graph_metrics.json", "w", encoding="utf8") as f:
+                    json.dump(graph_metrics, f, indent=2, ensure_ascii=False)
+
+                # Create visualization only if requested
+                if visualize:
+                    print("Creating interactive visualization...")
+                    episode_process.create_visualization(G, economy_terms, argentinian_lexicon, base_filename)
+                else:
+                    print("Skipping visualization (use --visualize to create interactive graph)")
             else:
                 print("Warning: No graph nodes found. Skipping visualization.")
                 graph_metrics = {"total_nodes": 0, "total_edges": 0}
